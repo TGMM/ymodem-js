@@ -1,0 +1,19 @@
+# osx / sshfs
+._*
+.DS_Store
+
+# emacs / vim
+*~
+\#*\#
+.\#*
+
+# vendored dependencies
+node_modules
+
+# build folder
+dist
+.prettierrc.json
+.vscode/.prettierrc
+.prettierrc.json
+pnpm-lock.yaml
+.vscode/settings.json

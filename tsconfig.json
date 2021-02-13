@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "lib": ["dom", "es2019"],
+    "module": "commonjs",
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "strict": true,
+    "target": "es5",
+    "typeRoots": ["node_modules/@types", "types"]
+  },
+  "exclude": ["jest", "node_modules"]
+}

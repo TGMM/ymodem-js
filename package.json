@@ -1,0 +1,32 @@
+{
+  "name": "@sarcomm/ymodem-js",
+  "version": "0.0.1",
+  "description": "A ymodem implementation written in javascript.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "author": "TGMM",
+  "license": "MIT",
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.11.6",
+    "@testing-library/react": "^11.2.2",
+    "@types/jest": "^26.0.16",
+    "@types/node": "^12.12.67",
+    "@typescript-eslint/eslint-plugin": "^4.9.0",
+    "@typescript-eslint/parser": "^4.9.0",
+    "eslint": "^7.14.0",
+    "eslint-config-prettier": "^6.15.0",
+    "eslint-plugin-jsx-a11y": "^6.4.1",
+    "eslint-plugin-react": "^7.21.5",
+    "eslint-plugin-react-hooks": "^4.2.0",
+    "jest": "^26.6.3",
+    "prettier": "2.2.1",
+    "ts-jest": "^26.4.4",
+    "typescript": "^4.1.2"
+  },
+  "dependencies": {
+    "buffer-chunks": "^0.1.1",
+    "crc-full": "^1.1.0",
+    "serialport": "^9.0.6",
+    "@types/serialport": "^8.0.1"
+  }
+}
