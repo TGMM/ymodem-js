@@ -45,9 +45,11 @@ export class YModem {
     );
 
     serialPort: SerialPort;
+    byteReader = new SerialPort.parsers.ByteLength({ length: 1 });
 
     constructor(sp: SerialPort) {
         this.serialPort = sp;
+        this.serialPort.pipe(this.byteReader);
     }
 
     /**
@@ -63,10 +65,12 @@ export class YModem {
         delays?: Partial<YModemDelays>
     ) {
         let ymodemDelays = new YModemDelays();
-        if (delays) ymodemDelays.merge(delays);
+        if (delays) ymodemDelays = ymodemDelays.merge(delays);
+
+        console.log("Starting file send...");
 
         // [<<< CRC]
-        await this.waitForNext(YModem.CRC, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.CRC]);
 
         // [first packet >>>]
         const fileSize = fileData.byteLength;
@@ -79,9 +83,9 @@ export class YModem {
         console.log("[first packet >>>]");
 
         // [<<< ACK]
-        await this.waitForNext(YModem.ACK, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.ACK]);
         // [<<< CRC]
-        await this.waitForNext(YModem.CRC, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.CRC]);
 
         let fileChunks: Buffer[];
         let isLastByteSOH = false;
@@ -137,61 +141,51 @@ export class YModem {
         // [>>> EOT]
         this.serialPort.write([YModem.EOT]);
         // [<<< NAK]
-        await this.waitForNext(YModem.NAK, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.NAK]);
         // [>>> EOT]
         this.serialPort.write([YModem.EOT]);
         // [<<< ACK]
-        await this.waitForNext(YModem.ACK, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.ACK]);
         // [<<< CRC]
-        await this.waitForNext(YModem.CRC, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.CRC]);
 
-        const endPacket = YModem.createSendEndPacket();
+        const endPacket = YModem.createTailPacket();
         this.serialPort.write(endPacket);
 
         // [<<< ACK]
-        await this.waitForNext(YModem.ACK, ymodemDelays.readCharDelay);
+        await this.waitForNext([YModem.ACK]);
     }
 
     /**
-     * Waits for the given control character to appear in the serial buffer.
-     * @param controlChar The desired control character as a number.
-     * @param current The delay to wait between each serial buffer read.
+     * Waits for any of the given control characters to appear in the serial buffer.
+     * @param controlChars The desired control characters as a number array.
+     * @return A promise that is resolved when  any of the given control characters appear in the serial buffer.
      */
-    private async waitForNext(controlChar: number, readCharDelay: number) {
-        const CC = String.fromCharCode(controlChar);
-        while (true) {
-            const newChar = this.serialPort.read(1);
-            if (newChar == CC) {
-                console.log(`[<<< ${DebugDict[controlChar]}]`);
-                return;
-            }
-            await sleep(readCharDelay);
-        }
+    private waitForNext(controlChars: number[]) {
+        return new Promise<number>((resolve) => {
+            this.onControlCharsRead(controlChars, resolve);
+        });
     }
 
     /**
-     * Waits for the given control characters to appear in the serial buffer.
-     * @param controlChars The desired control characteres as a number array.
-     * @param readCharDelay The delay to wait between each serial buffer read.
-     * @returns The received character within the list.
-     */
-    private async waitForNextM(controlChars: number[], readCharDelay: number) {
-        const CC = controlChars.map((controlChar) =>
-            String.fromCharCode(controlChar)
-        );
-        while (true) {
-            let newChar = this.serialPort.read(1);
-
-            if (newChar && newChar instanceof Buffer) {
-                newChar = newChar.toString();
-
-                if (CC.includes(newChar)) {
-                    return newChar.charCodeAt(0);
-                }
+    * Executes a callback when any of the control characters to appear in the serial buffer.
+    * @param controlChars The desired control characters as a number array.
+    * @param callback The callback to resolve when the character appears. 
+    * Callback should take the received character as an argument of type number.
+    */
+    private onControlCharsRead(
+        controlChars: number[],
+        callback: (value: number | PromiseLike<number>) => void
+    ) {
+        this.byteReader.on("data", 
+        function onCharRead(this: YModem, newData: Buffer) {
+            const newChar = newData[0];
+            if (controlChars.includes(newChar)) {
+                console.log(`[<<< ${DebugDict[newChar]}]`);
+                this.byteReader.removeListener("data", onCharRead);
+                callback(newChar);
             }
-
-            await sleep(readCharDelay);
-        }
+        }.bind(this));
     }
 
     /**
@@ -206,16 +200,19 @@ export class YModem {
     ) {
         console.log(`Sending frame: ${packetNo}.`);
 
-        const waitForCCs = this.waitForNextM(
-            [YModem.ACK, YModem.NAK, YModem.CAN],
-            5
-        );
+        let waitForCCs = this.waitForNext([
+            YModem.ACK,
+            YModem.NAK,
+            YModem.CAN,
+        ]);
 
         for (let retryCount = 1; retryCount <= 10; retryCount++) {
             this.serialPort.write(dataPacket);
 
+            console.log(sendDelay);
             const timeout = sleep(sendDelay);
             const result = await Promise.race([waitForCCs, timeout]);
+            console.log("Result", result);
 
             if (result === YModem.ACK) {
                 break;
@@ -347,7 +344,7 @@ export class YModem {
      * Creates a tail packet.
      * @returns The EOT packet.
      */
-    private static createSendEndPacket() {
+    private static createTailPacket() {
         // SOH 00 ff NUM[128] CRCH CRC
         const buf = Buffer.alloc(128 + 5);
         buf[0] = YModem.SOH;
