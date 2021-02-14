@@ -31,7 +31,7 @@ export class YModem {
     static ACK = 0x06;
     static NAK = 0x15;
     static CAN = 0x18;
-    static CRC = "C".charCodeAt(0);
+    static C = "C".charCodeAt(0);
     static PAD_CHAR = 0x1a;
 
     static crcCalc = new CRC(
@@ -69,8 +69,8 @@ export class YModem {
 
         console.log("Starting file send...");
 
-        // [<<< CRC]
-        await this.waitForNext([YModem.CRC]);
+        // [<<< C]
+        await this.waitForNext([YModem.C]);
 
         // [first packet >>>]
         const fileSize = fileData.byteLength;
@@ -84,8 +84,8 @@ export class YModem {
 
         // [<<< ACK]
         await this.waitForNext([YModem.ACK]);
-        // [<<< CRC]
-        await this.waitForNext([YModem.CRC]);
+        // [<<< C]
+        await this.waitForNext([YModem.C]);
 
         let fileChunks: Buffer[];
         let isLastByteSOH = false;
@@ -146,8 +146,8 @@ export class YModem {
         this.serialPort.write([YModem.EOT]);
         // [<<< ACK]
         await this.waitForNext([YModem.ACK]);
-        // [<<< CRC]
-        await this.waitForNext([YModem.CRC]);
+        // [<<< C]
+        await this.waitForNext([YModem.C]);
 
         const endPacket = YModem.createTailPacket();
         this.serialPort.write(endPacket);
@@ -272,8 +272,8 @@ export class YModem {
         let currentBufferLoc = 0;
 
         // Header packet structure
-        // [1           1    1                 n                   m               2 ]
-        // [sendType, seq, seqOc, fileName..., 0, fileSize..., 0, fileData..., 0, CRC]
+        // [1           1    1                 n                   m             2 ]
+        // [sendType, seq, seqOc, fileName..., 0, fileSize..., 0, fileData..., 0, C]
         // where n + m = (128 | 1024)
         headerPacket.writeUInt8(sendType, currentBufferLoc);
         currentBufferLoc += 1;
