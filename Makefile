@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 TS_FILES := $(shell find lib/ -name "*.ts" -o -name "*.tsx")
 FORMATTED_FILES := $(TS_FILES) # Add other file types as you see fit, e.g. JSON files, config files
-MODIFIED_FORMATTED_FILES := $(shell git diff --name-only master $(FORMATTED_FILES))
+MODIFIED_FORMATTED_FILES := $(shell git diff --name-only main $(FORMATTED_FILES))
 
 ESLINT := ./node_modules/.bin/eslint
 PRETTIER := ./node_modules/.bin/prettier
