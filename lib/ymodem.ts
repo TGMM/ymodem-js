@@ -2,6 +2,8 @@ import bufferChunks = require("buffer-chunks");
 import * as SerialPort from "serialport";
 import { CRC } from "crc-full";
 import { YModemDelays } from "./ymodem-delays";
+import { YModemLogger } from "./ymodem-logger";
+import { SimpleLogger } from "./simple-logger";
 
 type SendType = 0x01 | 0x02;
 const SendSize = {
@@ -44,8 +46,9 @@ export class YModem {
         false
     );
 
-    serialPort: SerialPort;
-    byteReader = new SerialPort.parsers.ByteLength({ length: 1 });
+    private serialPort: SerialPort;
+    private byteReader = new SerialPort.parsers.ByteLength({ length: 1 });
+    logger: YModemLogger = new SimpleLogger();
 
     constructor(sp: SerialPort) {
         this.serialPort = sp;
@@ -80,7 +83,7 @@ export class YModem {
             fileSize
         );
         this.serialPort.write(header);
-        console.log("[first packet >>>]");
+        this.logger.log("[first packet >>>]");
 
         // [<<< ACK]
         await this.waitForNext([YModem.ACK]);
@@ -181,7 +184,7 @@ export class YModem {
         function onCharRead(this: YModem, newData: Buffer) {
             const newChar = newData[0];
             if (controlChars.includes(newChar)) {
-                console.log(`[<<< ${DebugDict[newChar]}]`);
+                this.logger.log(`[<<< ${DebugDict[newChar]}]`);
                 this.byteReader.removeListener("data", onCharRead);
                 callback(newChar);
             }
@@ -198,7 +201,7 @@ export class YModem {
         dataPacket: Buffer,
         sendDelay: number
     ) {
-        console.log(`Sending frame: ${packetNo}.`);
+        this.logger.log(`Sending frame: ${packetNo}.`);
 
         let waitForCCs = this.waitForNext([
             YModem.ACK,
@@ -209,10 +212,10 @@ export class YModem {
         for (let retryCount = 1; retryCount <= 10; retryCount++) {
             this.serialPort.write(dataPacket);
 
-            console.log(sendDelay);
+            this.logger.log(sendDelay);
             const timeout = sleep(sendDelay);
             const result = await Promise.race([waitForCCs, timeout]);
-            console.log("Result", result);
+            this.logger.log("Result", result);
 
             if (result === YModem.ACK) {
                 break;
@@ -221,12 +224,12 @@ export class YModem {
                 retryCount -= 1;
             }
             if (result === YModem.CAN) {
-                console.error(`Throw on data frame ${packetNo + 1}.`);
+                this.logger.error(`Throw on data frame ${packetNo + 1}.`);
                 throw new Error("Operation cancelled by remote device.");
             }
             // Timeout condition won, packet was not acknowledged.
             else {
-                console.log(
+                this.logger.log(
                     `Packet was not sent! Retrying... Retry No: ${retryCount}.`
                 );
             }
