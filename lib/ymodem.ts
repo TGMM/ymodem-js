@@ -1,9 +1,11 @@
 import bufferChunks = require("buffer-chunks");
-import * as SerialPort from "serialport";
+import SerialPort = require('serialport');
+import ByteLengthParser = SerialPort.parsers.ByteLength;
 import { CRC } from "crc-full";
 import { YModemDelays } from "./ymodem-delays";
 import { YModemLogger } from "./ymodem-logger";
 import { SimpleLogger } from "./simple-logger";
+import { YModemProgress } from "./ymodem-progress";
 
 type SendType = 0x01 | 0x02;
 const SendSize = {
@@ -47,7 +49,7 @@ export class YModem {
     );
 
     private serialPort: SerialPort;
-    private byteReader = new SerialPort.parsers.ByteLength({ length: 1 });
+    private byteReader: ByteLengthParser = new ByteLengthParser({length: 1});
     logger: YModemLogger = new SimpleLogger();
 
     constructor(sp: SerialPort) {
@@ -65,12 +67,15 @@ export class YModem {
     async sendFile(
         fileName: string,
         fileData: Buffer,
-        delays?: Partial<YModemDelays>
+        delays?: Partial<YModemDelays>,
+        progressCallback?: (p: YModemProgress) => void
     ) {
         let ymodemDelays = new YModemDelays();
         if (delays) ymodemDelays = ymodemDelays.merge(delays);
 
-        console.log("Starting file send...");
+        const yp = new YModemProgress();
+
+        this.logger.log("Starting file send...");
 
         // [<<< C]
         await this.waitForNext([YModem.C]);
@@ -121,6 +126,7 @@ export class YModem {
         }
 
         let sendType = YModem.STX;
+        yp.totalPackets = fileChunks.length;
         for (let packetNo = 1; packetNo <= fileChunks.length; packetNo++) {
             if (YModem.isLast(fileChunks.length, packetNo)) {
                 sendType = isLastByteSOH ? YModem.SOH : YModem.STX;
@@ -139,6 +145,11 @@ export class YModem {
                 dataPacket,
                 ymodemDelays.sendDelay
             );
+
+            yp.sentPackets = packetNo;
+            yp.progress = Math.ceil((packetNo / fileChunks.length) * 100);
+            if(progressCallback)
+                progressCallback(yp);
         }
 
         // [>>> EOT]
@@ -157,12 +168,18 @@ export class YModem {
 
         // [<<< ACK]
         await this.waitForNext([YModem.ACK]);
+
+        yp.progress = 100;
+        yp.finished = true;
+        if(progressCallback)
+            progressCallback(yp);
     }
 
     /**
      * Waits for any of the given control characters to appear in the serial buffer.
      * @param controlChars The desired control characters as a number array.
-     * @return A promise that is resolved when  any of the given control characters appear in the serial buffer.
+     * @return A promise that is resolved when 
+     * any of the given control characters appear in the serial buffer.
      */
     private waitForNext(controlChars: number[]) {
         return new Promise<number>((resolve) => {
@@ -203,7 +220,7 @@ export class YModem {
     ) {
         this.logger.log(`Sending frame: ${packetNo}.`);
 
-        let waitForCCs = this.waitForNext([
+        const waitForCCs = this.waitForNext([
             YModem.ACK,
             YModem.NAK,
             YModem.CAN,
@@ -398,7 +415,7 @@ export class YModem {
     private static padRBuffer(
         buf: Buffer,
         desiredLength: number,
-        padChar: number = 0x00
+        padChar = 0x00
     ) {
         const padBuf = Buffer.alloc(desiredLength).fill(padChar);
         buf.copy(padBuf);
