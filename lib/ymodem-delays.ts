@@ -1,10 +1,10 @@
 export class YModemDelays {
-    sendDelay: number = 50;
-    resendDelay: number = 5;
-    readCharDelay: number = 150;
+    sendDelay = 50;
+    resendDelay = 5;
+    readCharDelay = 150;
 
     clone() {
-        let yModemDelays = new YModemDelays();
+        const yModemDelays = new YModemDelays();
         yModemDelays.sendDelay = this.sendDelay;
         yModemDelays.resendDelay = this.resendDelay;
         yModemDelays.readCharDelay = this.readCharDelay;
