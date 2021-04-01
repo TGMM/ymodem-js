@@ -68,7 +68,8 @@ export class YModem {
         fileName: string,
         fileData: Buffer,
         delays?: Partial<YModemDelays>,
-        progressCallback?: (p: YModemProgress) => void
+        progressCallback?: (p: YModemProgress) => void,
+        fullProtocolEnd = true
     ) {
         let ymodemDelays = new YModemDelays();
         if (delays) ymodemDelays = ymodemDelays.merge(delays);
@@ -151,23 +152,35 @@ export class YModem {
             if(progressCallback)
                 progressCallback(yp);
         }
+        this.logger.log("Finished sending packets");
 
         // [>>> EOT]
         this.serialPort.write([YModem.EOT]);
-        // [<<< NAK]
-        await this.waitForNext([YModem.NAK]);
-        // [>>> EOT]
-        this.serialPort.write([YModem.EOT]);
-        // [<<< ACK]
-        await this.waitForNext([YModem.ACK]);
-        // [<<< C]
-        await this.waitForNext([YModem.C]);
-
-        const endPacket = YModem.createTailPacket();
-        this.serialPort.write(endPacket);
-
-        // [<<< ACK]
-        await this.waitForNext([YModem.ACK]);
+        this.logger.log("[>>> EOT]");
+        
+        /**
+        * Some implementations of the protocol just
+        * send a CAN character instead of the full
+        * sequence.
+        */
+        if(fullProtocolEnd) {
+            // [<<< NAK]
+            await this.waitForNext([YModem.NAK]);
+            // [>>> EOT]
+            this.serialPort.write([YModem.EOT]);
+            this.logger.log("[>>> EOT]");
+            // [<<< ACK]
+            await this.waitForNext([YModem.ACK]);
+            // [<<< C]
+            await this.waitForNext([YModem.C]);
+            const endPacket = YModem.createTailPacket();
+            this.serialPort.write(endPacket);
+    
+            // [<<< ACK]
+            await this.waitForNext([YModem.ACK]);
+        }
+        else
+            await this.waitForNext([YModem.CAN]);
 
         yp.progress = 100;
         yp.finished = true;
