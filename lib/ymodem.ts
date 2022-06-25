@@ -6,6 +6,7 @@ import { YModemDelays } from "./ymodem-delays";
 import { YModemLogger } from "./ymodem-logger";
 import { SimpleLogger } from "./simple-logger";
 import { YModemProgress } from "./ymodem-progress";
+import { YModemFile } from "./ymodem-file";
 
 type SendType = 0x01 | 0x02;
 const SendSize = {
@@ -50,6 +51,7 @@ export class YModem {
 
     private serialPort: SerialPort;
     private byteReader: ByteLengthParser = new ByteLengthParser({length: 1});
+    private packageReader: ByteLengthParser | undefined;
     logger: YModemLogger = new SimpleLogger();
 
     constructor(sp: SerialPort) {
@@ -188,6 +190,65 @@ export class YModem {
             progressCallback(yp);
     }
 
+    async waitForNextPackage(): Promise<Buffer> {
+
+        if(this.packageReader != undefined) {
+            return await new Promise<Buffer>(resolve => {
+                this.packageReader?.on("data", data => {
+                    resolve(data);
+                })
+            });
+        }
+
+        const firstChar = await this.onCharRead();
+
+        // SOH is 128, STX is 1024
+        const byteLength = firstChar[0] == YModem.SOH ? 128 : 1024;
+        this.packageReader = new ByteLengthParser({length: byteLength});
+
+        const resultingPackage = await this.readXCharacters(byteLength + 4);
+
+        return Buffer.concat([firstChar, resultingPackage]);
+    }
+
+    async sendCUntilPackageIsReceived(): Promise<Buffer> {
+        // TODO: Send Cs until this happens
+        
+        return this.waitForNextPackage();
+    }
+
+    async receiveFile(progressCallback?: (p: YModemProgress) => void): Promise<YModemFile> {
+
+        // TODO: I write Cs until I receive packet 0
+        const firstPacket = await this.sendCUntilPackageIsReceived();
+        
+        const fileName: string = Buffer.from(firstPacket.slice(3, firstPacket.indexOf(0)))
+                                    .toString();
+        const fileSizeStartIndex = firstPacket.indexOf(0) + 1;
+        const fileSizeInBytes: number = parseInt(firstPacket.slice(fileSizeStartIndex, 
+            firstPacket.indexOf(0, fileSizeStartIndex)).toString());
+
+        const fileBuffer: number[] = [];
+
+        // TODO: I acknowledge and ask for the next one
+        // TODO: I repeat for all packages
+        for (let i = 0; i < fileSizeInBytes; i++) {
+            this.serialPort.write([YModem.ACK]);
+            await this.sendCUntilPackageIsReceived();
+        }
+
+        // TODO: I wait for EOT
+        await this.waitForNext([YModem.EOT]);
+
+        // TODO: I send NAK
+        this.serialPort.write([YModem.NAK]);
+        
+        // TODO: I wait for EOT again
+        this.serialPort.write([YModem.ACK]);
+
+        return new YModemFile(fileName, fileSizeInBytes, Buffer.from(""));
+    }
+
     /**
      * Waits for any of the given control characters to appear in the serial buffer.
      * @param controlChars The desired control characters as a number array.
@@ -198,6 +259,27 @@ export class YModem {
         return new Promise<number>((resolve) => {
             this.onControlCharsRead(controlChars, resolve);
         });
+    }
+
+    /**
+     * Waits for any character to be read from the serial buffer.
+     * @return A promise that is resolved when 
+     * any character appears in the serial buffer.
+     */
+    private onCharRead(): Promise<Buffer> {
+        return new Promise<Buffer>(resolve => {
+            this.byteReader.on("data", resolve);
+        });
+    }
+
+    private async readXCharacters(characterCount: number): Promise<Buffer> {
+        const resultBuffer: number[] = [];
+        for (let index = 0; index < characterCount; index++) {
+            const newChar = await this.onCharRead();
+            resultBuffer.push(newChar[0]);
+        }
+
+        return Buffer.from(resultBuffer);
     }
 
     /**
